@@ -1,0 +1,434 @@
+/*
+ * File: Boggle.cpp
+ * ----------------
+ * Student ID: 5110369009
+ * Name: 张子辰
+ * This file is the main starter file for Boggle problem.
+ */
+ 
+#include <iostream>
+#include <vector>
+#include "gboggle.h"
+#include "grid.h"
+#include "gwindow.h"
+#include "lexicon.h"
+#include "random.h"
+#include "simpio.h"
+#include "ctype.h"
+using namespace std;
+
+struct SPoint
+{
+  int x;
+  int y;
+  
+  SPoint(int xx = 0, int yy = 0)
+    : x(xx), y(yy) {}
+};
+typedef vector<SPoint> VPoint;
+
+/* Constants */
+
+const int BOGGLE_WINDOW_WIDTH = 650;
+const int BOGGLE_WINDOW_HEIGHT = 350;
+
+const string STANDARD_CUBES[16]  = {
+   "AAEEGN", "ABBJOO", "ACHOPS", "AFFKPS",
+   "AOOTTW", "CIMOTU", "DEILRX", "DELRVY",
+   "DISTTY", "EEGHNW", "EEINSU", "EHRTVW",
+   "EIOSST", "ELRTTY", "HIMNQU", "HLNNRZ"
+};
+ 
+const string BIG_BOGGLE_CUBES[25]  = {
+   "AAAFRS", "AAEEEE", "AAFIRS", "ADENNN", "AEEEEM",
+   "AEEGMU", "AEGMNN", "AFIRSY", "BJKQXZ", "CCNSTW",
+   "CEIILT", "CEILPT", "CEIPST", "DDLNOR", "DDHNOT",
+   "DHHLOR", "DHLNOR", "EIIITT", "EMOTTT", "ENSSSU",
+   "FIPRSY", "GORRVW", "HIPRRY", "NOOTUW", "OOOTTU"
+};
+
+#define EMPTY ' '
+#define OCCUPY 'O'
+
+/* Variables */
+
+Lexicon english("EnglishWords.dat");
+
+string board;
+int size;
+vector<string> humanword;
+VPoint path;
+
+/*
+ * Function: welcome
+ * Usage: welcome();
+ * -----------------
+ * Print out a cheery welcome message.
+ */
+
+void welcome() {
+   cout << "Welcome!  You're about to play an intense game ";
+   cout << "of mind-numbing Boggle.  The good news is that ";
+   cout << "you might improve your vocabulary a bit.  The ";
+   cout << "bad news is that you're probably going to lose ";
+   cout << "miserably to this little dictionary-toting hunk ";
+   cout << "of silicon.  If only YOU had a gig of RAM..." << endl << endl;
+}
+
+/*
+ * Function: giveInstructions
+ * Usage: giveInstructions();
+ * --------------------------
+ * Print out the instructions for the user.
+ */
+
+void giveInstructions() {
+   cout << endl;
+   cout << "The boggle board is a grid onto which I ";
+   cout << "I will randomly distribute cubes. These ";
+   cout << "6-sided cubes have letters rather than ";
+   cout << "numbers on the faces, creating a grid of ";
+   cout << "letters on which you try to form words. ";
+   cout << "You go first, entering all the words you can ";
+   cout << "find that are formed by tracing adjoining ";
+   cout << "letters. Two letters adjoin if they are next ";
+   cout << "to each other horizontally, vertically, or ";
+   cout << "diagonally. A letter can only be used once ";
+   cout << "in each word. Words must be at least four ";
+   cout << "letters long and can be counted only once. ";
+   cout << "You score points based on word length: a ";
+   cout << "4-letter word is worth 1 point, 5-letters ";
+   cout << "earn 2 points, and so on. After your puny ";
+   cout << "brain is exhausted, I, the supercomputer, ";
+   cout << "will find all the remaining words and double ";
+   cout << "or triple your paltry score." << endl << endl;
+   cout << "Hit return when you're ready...";
+   getLine();
+}
+
+void showpath()
+{
+  for(VPoint::iterator it = path.begin(); it != path.end(); ++it)
+  {
+    highlightCube(it->x, it->y, true);
+    pause(50);
+  }
+
+  pause(250);
+
+  for(VPoint::iterator it = path.begin(); it != path.end(); ++it)
+    highlightCube(it->x, it->y, false);
+}
+
+
+void InitBoard(bool isbig)
+{
+  board = ""
+  if(isbig)
+  {
+    drawBoard(5, 5);
+    for(int i = 0; i < 25; i++) 
+    {
+      int ran = randomInteger(0, 5);
+      char chr = BIG_BOGGLE_CUBES[i][ran];
+      board += chr;
+      labelCube(i / 5, i % 5, chr);
+    }
+  }
+  else
+  {
+    drawBoard(4, 4);
+    for(int i = 0; i < 16; i++)
+    {
+      int ran = randomInteger(0, 5);
+      char chr = STANDARD_CUBES[i][ran];
+      board += chr;
+      labelCube(i / 4, i % 4, chr);
+    }
+  }
+}
+
+void InitBoardC(bool isbig)
+{
+  int size = isbig? 5: 4;
+  int area = size * size;
+
+  cout << "Enter a " << area << "-character string to indentify "
+          "which letters you want on the cubes. The first " 
+       << size << " letters are the cubes on the top row from "
+          "left to right, the next " << size << " letters "
+          "are the second row, and so on.\n";
+
+  string ipt;
+  do {
+    cout << "Enter the string: ";
+    getline(cin, ipt);
+  } while(ipt.size() < area);
+  board = ipt.substr(0, area);
+
+  drawBoard(size, size);
+  for(int i = 0; i < area; i++)
+    labelCube(i / size, i % size, board[i]);
+}
+
+bool InEnglish(const string &word)
+{
+  for(Lexicon::iterator it = english.begin(); it != english.end(); ++it)
+    if(word == *it) return true;
+
+  return false;
+}
+
+bool InHumanWord(const string &word)
+{
+  for(vector<string>::iterator it = humanword.begin(); it != humanword.end(); ++it)
+    if(word == *it) return true;
+
+  return false;
+}
+
+bool RInBoard(const string &word, string &occupy, int row, int col, int index)
+{
+  //cout << word << ' ' << row << ' ' << col << ' ' << index << endl;
+  
+  int pos = row * size + col;
+  occupy[pos] = OCCUPY;
+  path.push_back(SPoint(row, col));
+  if(tolower(word[index]) != tolower(board[pos]))
+  {
+    //cout << word[index] << ' ' << board[pos] << endl;
+    occupy[pos] = EMPTY;
+    path.pop_back();
+    return false;
+  }
+  //cout << word << endl;
+  if(index == word.size() - 1)
+  {
+    showpath();
+    return true;
+  }
+  
+  //Up
+  if(row != 0 && occupy[pos - size] == EMPTY)
+  {
+    bool res = RInBoard(word, occupy, row - 1, col, index + 1);
+    if(res) return true;
+  }
+  //Down
+  if(row != size - 1 && occupy[pos + size] == EMPTY)
+  {
+    bool res = RInBoard(word, occupy, row + 1, col, index + 1);
+    if(res) return true;
+  }
+  //Left
+  if(col != 0 && occupy[pos - 1] == EMPTY)
+  {
+    bool res = RInBoard(word, occupy, row, col - 1, index + 1);
+    if(res) return true;
+  }
+  //Right
+  if(col != size - 1 && occupy[pos + 1] == EMPTY)
+  {
+    bool res = RInBoard(word, occupy, row, col + 1, index + 1);
+    if(res) return true;
+  }
+  //UpRight
+  if(row != 0 && col != size - 1 && occupy[pos - size + 1] == EMPTY)
+  {
+    bool res = RInBoard(word, occupy, row - 1, col + 1, index + 1);
+    if(res) return true;
+  }
+  //UpLeft
+  if(row != 0 && col != 0 && occupy[pos - size - 1] == EMPTY)
+  {
+    bool res = RInBoard(word, occupy, row - 1, col - 1, index + 1);
+    if(res) return true;
+  }
+  //DownLeft
+  if(row != size - 1 && col != 0 && occupy[pos + size - 1] == EMPTY)
+  {
+    bool res = RInBoard(word, occupy, row + 1, col - 1, index + 1);
+    if(res) return true;
+  }
+  //DownRight
+  if(row != size - 1 && col != size - 1 && occupy[pos + size + 1] == EMPTY)
+  {
+    bool res = RInBoard(word, occupy, row + 1, col + 1, index + 1);
+    if(res) return true;
+  }
+
+  occupy[pos] = EMPTY;
+  path.pop_back();
+  return false;  
+}
+
+bool InBoard(const string &word)
+{
+  path.clear();
+  string occupy(size * size, EMPTY);
+  for(int i = 0; i < size; i++)
+  {
+    for(int j = 0; j < size; j++)
+    {
+      if(RInBoard(word, occupy, i, j, 0))
+        return true;
+    }
+  }
+  return false;
+}
+
+void HumanTurn()
+{
+  string word;
+  while(true) {
+    cout << "Enter a word:";
+    getline(cin, word);
+
+    if(word == "") break;
+    //cout << "Word: " << word << endl;
+    
+    //Judge if the length less than four
+    if(word.size() < 4)
+    {
+      cout << "The word doesn't meet the minimum word length."
+           << endl;
+      continue;
+    }
+    //Judge if it's in words list
+    if(!InEnglish(word))
+    {
+      cout << "It is not a valid word!" << endl;
+      continue;
+    }
+    //Judge if it's existant
+    if(InHumanWord(word))
+    {
+      cout << "You've already guess that!" << endl;
+      continue;
+    }
+    //Judge if it's in the board
+    if(!InBoard(word))
+    {
+      cout << "You can't make that word!" << endl;
+      continue;
+    }
+    //Add it
+    recordWordForPlayer(word, HUMAN);
+    humanword.push_back(word);
+  }
+
+}
+
+void SearchAll(string &word, string &occupy, int row, int col)
+{
+  int pos = row * size + col;
+  occupy[pos] = OCCUPY;
+  path.push_back(SPoint(row, col));
+  word += tolower(board[pos]);
+  if(!english.containsPrefix(word))
+  {
+    word = word.substr(0, word.size() - 1);
+    occupy[pos] = EMPTY;
+    path.pop_back();
+    return;
+  }
+  if(word.size() >= 4 && InEnglish(word) && !InHumanWord(word))
+  {
+    recordWordForPlayer(word, COMPUTER);
+    humanword.push_back(word);
+    showpath();
+  }
+
+  //cout << word << ' ' << row << ' ' << col << endl;
+
+  //Up
+  if(row != 0 && occupy[pos - size] == EMPTY)
+    SearchAll(word, occupy, row - 1, col);
+  //Down
+  if(row != size - 1 && occupy[pos + size] == EMPTY)
+    SearchAll(word, occupy, row + 1, col);
+  //Right
+  if(col != size - 1 && occupy[pos + 1] == EMPTY)
+    SearchAll(word, occupy, row, col + 1);
+  //Left
+  if(col != 0 && occupy[pos - 1] == EMPTY)
+    SearchAll(word, occupy, row, col - 1);
+  //UpRight
+  if(row != 0 && col != size - 1 && occupy[pos - size + 1] == EMPTY)
+    SearchAll(word, occupy, row - 1, col + 1);
+  //UpLeft
+  if(row != 0 && col != 0 && occupy[pos - size - 1] == EMPTY)
+    SearchAll(word, occupy, row - 1, col - 1);
+  //DownLeft
+  if(row != size - 1 && col != 0 && occupy[pos + size - 1] == EMPTY)
+    SearchAll(word, occupy, row + 1, col - 1);
+  //DownRight
+  if(row != size - 1 && col != size - 1 && occupy[pos + size + 1] == EMPTY)
+    SearchAll(word, occupy, row + 1, col + 1);
+
+  word = word.substr(0, word.size() - 1);
+  path.pop_back();
+  occupy[pos] = EMPTY;
+}
+
+
+void ComputerTurn()
+{
+  path.clear();
+  string word = "";
+  string occupy(size * size, EMPTY);
+  for(int i = 0; i < size; i++)
+  {
+    for(int j = 0; j < size; j++)
+    {
+      SearchAll(word, occupy, i, j);
+    }
+  }
+}
+
+
+/* Main program */
+
+int main() {
+  GWindow gw(BOGGLE_WINDOW_WIDTH, BOGGLE_WINDOW_HEIGHT);
+  initGBoggle(gw);
+  welcome();
+  giveInstructions();
+
+  bool cont = false;
+  do {
+    cout << "You can choose standard Boogle (4x4 grid)\n"
+            "or Big Boggle (5x5)\n";
+    string yon;
+    do {
+      cout << "Would you like Big Boggle? [yes|no] : ";
+      getline(cin, yon);
+    } while(!(yon == "yes" || yon == "y" || yon == "no" || yon == "n"));
+    bool isbig = (yon == "yes" || yon == "y");
+    size = isbig? 5: 4;
+
+    cout << "I'll give you a chance to set up the board to your "
+            "specification, which makes it easier to confirm "
+            "your boggle program is working.\n";
+    do {
+      cout << "Do you want to force the boardconfiguration? [yes|no] : ";
+      getline(cin, yon);
+    } while(!(yon == "yes" || yon == "y" || yon == "no" || yon == "n"));
+    bool custom = (yon == "yes" || yon == "y");
+
+    custom? InitBoardC(isbig): InitBoard(isbig);
+    humanword.clear();
+
+    HumanTurn();
+    ComputerTurn();
+
+    do {
+      cout << "Would you like to play again? [yes|no] : ";
+      getline(cin, yon);
+    } while(!(yon == "yes" || yon == "y" || yon == "no" || yon == "n"));
+    cont = (yon == "yes" || yon == "y");
+  } while(cont);
+
+  return 0;
+}
+

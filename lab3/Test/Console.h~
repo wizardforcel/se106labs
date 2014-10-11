@@ -1,0 +1,13 @@
+#ifndef CONSOLE_H
+#define CONSOLE_H
+
+#include <iostream>
+using std::cout;
+
+#define NONE "\x1b[0m"
+#define Green "\x1b[32;1m"
+#define Red "\x1b[31;1m"
+
+#define SetConsoleColor(c) {cout<<c;}
+
+#endif
